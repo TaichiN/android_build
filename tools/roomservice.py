@@ -63,6 +63,9 @@ while not depsonly:
         repositories.append(res)
     page = page + 1
 
+local_manifests = r'.repo/local_manifests'
+if not os.path.exists(local_manifests): os.makedirs(local_manifests)
+
 def exists_in_tree(lm, repository):
     for child in lm.getchildren():
         if child.attrib['name'].endswith(repository):
@@ -93,7 +96,7 @@ def get_default_revision():
 
 def get_from_manifest(devicename):
     try:
-        lm = ElementTree.parse(".repo/local_manifests/local_manifest.xml")
+        lm = ElementTree.parse(".repo/local_manifests/roomservice.xml")
         lm = lm.getroot()
     except:
         lm = ElementTree.Element("manifest")
@@ -117,7 +120,7 @@ def get_from_manifest(devicename):
 
 def is_in_manifest(projectname):
     try:
-        lm = ElementTree.parse(".repo/local_manifests/local_manifest.xml")
+        lm = ElementTree.parse(".repo/local_manifests/roomservice.xml")
         lm = lm.getroot()
     except:
         lm = ElementTree.Element("manifest")
@@ -130,7 +133,7 @@ def is_in_manifest(projectname):
 
 def add_to_manifest(repositories):
     try:
-        lm = ElementTree.parse(".repo/local_manifests/local_manifest.xml")
+        lm = ElementTree.parse(".repo/local_manifests/roomservice.xml")
         lm = lm.getroot()
     except:
         lm = ElementTree.Element("manifest")
@@ -148,6 +151,11 @@ def add_to_manifest(repositories):
 
         if 'branch' in repository:
             project.set('revision',repository['branch'])
+        elif fallback_branch:
+            print "Using fallback branch %s for %s" % (fallback_branch, repo_name)
+            project.set('revision', fallback_branch)
+        else:
+            print "Using default branch for %s" % repo_name
 
         lm.append(project)
 
@@ -155,7 +163,7 @@ def add_to_manifest(repositories):
     raw_xml = ElementTree.tostring(lm)
     raw_xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + raw_xml
 
-    f = open('.repo/local_manifest.xml', 'w')
+    f = open('.repo/local_manifests/roomservice.xml', 'w')
     f.write(raw_xml)
     f.close()
 
@@ -245,4 +253,4 @@ else:
             print "Done"
             sys.exit()
 
-print "Repository for %s not found in the CyanogenMod Github repository list. If this is in error, you may need to manually add it to your localmanifest/local_manifest.xml." % device
+print "Repository for %s not found in the CyanogenMod Github repository list. If this is in error, you may need to manually add it to your localmanifest/roomservice.xml." % device
