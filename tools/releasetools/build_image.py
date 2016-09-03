@@ -171,32 +171,15 @@ def BuildVerityTree(sparse_image_path, verity_image_path, prop_dict):
 
 def BuildVerityMetadata(image_size, verity_metadata_path, root_hash, salt,
                         block_device, signer_path, key):
-  verity_key = os.getenv("PRODUCT_VERITY_KEY", None)
-  verity_key_password = None
-
-  if verity_key and os.path.exists(verity_key+".pk8"):
-    verity_key_passwords = {}
-    verity_key_passwords.update(common.PasswordManager().GetPasswords(verity_key.split()))
-    verity_key_password = verity_key_passwords[verity_key]
-
   cmd_template = (
       "system/extras/verity/build_verity_metadata.py %s %s %s %s %s %s %s")
   cmd = cmd_template % (image_size, verity_metadata_path, root_hash, salt,
                         block_device, signer_path, key)
   print(cmd)
-  runcmd = ["system/extras/verity/build_verity_metadata.py", image_size, verity_metadata_path, root_hash, salt, block_device, signer_path, key];
-  if verity_key_password is not None:
-    sp = subprocess.Popen(runcmd, stdin=subprocess.PIPE)
-    sp.communicate(verity_key_password)
-  else:
-    sp = subprocess.Popen(runcmd)
-
-  sp.wait()
-
-  if sp.returncode != 0:
-    print("Could not build verity metadata!")
+  status, output = getstatusoutput(cmd)
+  if status:
+    print("Could not build verity metadata! Error: %s" % output)
     return False
-
   return True
 
 def Append2Simg(sparse_image_path, unsparse_image_path, error_message):
@@ -340,6 +323,7 @@ def BuildImage(in_dir, prop_dict, out_file, target_out=None):
   Returns:
     True iff the image is built successfully.
   """
+  print("BuildImage: in_dir = %s, out_file = %s" % (in_dir, out_file))
   # system_root_image=true: build a system.img that combines the contents of
   # /system and the ramdisk, and can be mounted at the root of the file system.
   origin_in = in_dir
@@ -382,6 +366,7 @@ def BuildImage(in_dir, prop_dict, out_file, target_out=None):
     adjusted_size = AdjustPartitionSizeForVerity(partition_size,
                                                  verity_fec_supported)
     if not adjusted_size:
+      print("Error: adjusting partition size for verity failed, partition_size = %d" % partition_size)
       return False
     prop_dict["partition_size"] = str(adjusted_size)
     prop_dict["original_partition_size"] = str(partition_size)
@@ -411,6 +396,7 @@ def BuildImage(in_dir, prop_dict, out_file, target_out=None):
     if "base_fs_file" in prop_dict:
       base_fs_file = ConvertBlockMapToBaseFs(prop_dict["base_fs_file"])
       if base_fs_file is None:
+        print("Error: no base fs file found")
         return False
       build_command.extend(["-d", base_fs_file])
     build_command.extend(["-L", prop_dict["mount_point"]])
@@ -464,9 +450,12 @@ def BuildImage(in_dir, prop_dict, out_file, target_out=None):
 
   try:
     if reserved_blocks and fs_type.startswith("ext4"):
+      print("fs type is ext4")
       (ext4fs_output, exit_code) = RunCommand(build_command)
     else:
+      print("fs type is not ext4")
       (_, exit_code) = RunCommand(build_command)
+    print("Running %s command, exit code = %d" % (build_command, exit_code))
   finally:
     if in_dir != origin_in:
       # Clean up temporary directories and files.
@@ -476,6 +465,7 @@ def BuildImage(in_dir, prop_dict, out_file, target_out=None):
     if base_fs_file is not None:
       os.remove(base_fs_file)
   if exit_code != 0:
+    print("Error: %s command unsuccessful" % build_command)
     return False
 
   # Bug: 21522719, 22023465
@@ -516,17 +506,19 @@ def BuildImage(in_dir, prop_dict, out_file, target_out=None):
   # create the verified image if this is to be verified
   if verity_supported and is_verity_partition:
     if not MakeVerityEnabledImage(out_file, verity_fec_supported, prop_dict):
+      print("Error: making verity enabled image failed")
       return False
 
   if run_fsck and prop_dict.get("skip_fsck") != "true":
     success, unsparse_image = UnsparseImage(out_file, replace=False)
     if not success:
+      print("Error: unparsing of image failed")
       return False
 
     # Run e2fsck on the inflated image file
     e2fsck_command = ["e2fsck", "-f", "-n", unsparse_image]
     (_, exit_code) = RunCommand(e2fsck_command)
-
+    print("Running %s command, exit code = %d" % (e2fsck_command, exit_code))
     os.remove(unsparse_image)
 
   return exit_code == 0
